@@ -13,7 +13,6 @@ jobs:
       IMAGE_NAME: backend-api
       CONTAINER_NAME: backend-api
       APP_PORT: 3000
-      ENV_FILE_PATH: /var/www/backend/.env
 
     steps:
       - name: Checkout current repo
@@ -57,12 +56,6 @@ jobs:
             IMAGE_NAME="backend-api"
             CONTAINER_NAME="backend-api"
             APP_PORT="3000"
-            ENV_FILE_PATH="/var/www/backend/.env"
-
-            if [ ! -f "$ENV_FILE_PATH" ]; then
-              echo "Missing env file: $ENV_FILE_PATH"
-              exit 1
-            fi
 
             sudo docker load -i /tmp/$IMAGE_NAME.tar
 
@@ -72,7 +65,6 @@ jobs:
             sudo docker run -d \
               --name $CONTAINER_NAME \
               --restart unless-stopped \
-              --env-file $ENV_FILE_PATH \
               -p 127.0.0.1:$APP_PORT:$APP_PORT \
               $IMAGE_NAME:latest
 
