@@ -1,54 +1,6 @@
-name: Deploy Docker Backend to EC2
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout current repo
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: |
-          docker build -t backend-api:latest .
-
-      - name: Save Docker image
-        run: |
-          docker save backend-api:latest -o backend-api.tar
-
-      - name: Prepare SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
-          chmod 600 ~/.ssh/ec2_key
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Upload Docker image to EC2
-        run: |
-          scp -i ~/.ssh/ec2_key backend-api.tar \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/backend-api.tar
-
-      - name: Load and restart container on EC2
-        run: |
-          ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            set -e
-
-            docker load -i /tmp/backend-api.tar
-
-            docker stop backend-api || true
-            docker rm backend-api || true
-
-            docker run -d \
-              --name backend-api \
-              --restart unless-stopped \
-              --env-file /var/www/backend/.env \
-              -p 127.0.0.1:3000:3000 \
-              backend-api:latest
-
-            docker image prune -f
-          EOF
+- name: Prepare SSH key
+  run: |
+    mkdir -p ~/.ssh
+    echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+    chmod 600 ~/.ssh/ec2_key
+    ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
