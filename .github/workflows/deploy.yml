@@ -1,6 +1,82 @@
-- name: Prepare SSH key
-  run: |
-    mkdir -p ~/.ssh
-    echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
-    chmod 600 ~/.ssh/ec2_key
-    ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+name: Deploy Docker Backend to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: backend-api
+      CONTAINER_NAME: backend-api
+      APP_PORT: 3000
+      ENV_FILE_PATH: /var/www/backend/.env
+
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME:latest .
+
+      - name: Save Docker image
+        run: |
+          docker save $IMAGE_NAME:latest -o $IMAGE_NAME.tar
+
+      - name: Prepare SSH key
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -T 20 -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload Docker image to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          scp -i ~/.ssh/ec2_key \
+            $IMAGE_NAME.tar \
+            $EC2_USER@$EC2_HOST:/tmp/$IMAGE_NAME.tar
+
+      - name: Load image and restart container on EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/ec2_key $EC2_USER@$EC2_HOST << 'EOF'
+            set -e
+
+            IMAGE_NAME="backend-api"
+            CONTAINER_NAME="backend-api"
+            APP_PORT="3000"
+            ENV_FILE_PATH="/var/www/backend/.env"
+
+            if [ ! -f "$ENV_FILE_PATH" ]; then
+              echo "Missing env file: $ENV_FILE_PATH"
+              exit 1
+            fi
+
+            sudo docker load -i /tmp/$IMAGE_NAME.tar
+
+            sudo docker stop $CONTAINER_NAME || true
+            sudo docker rm $CONTAINER_NAME || true
+
+            sudo docker run -d \
+              --name $CONTAINER_NAME \
+              --restart unless-stopped \
+              --env-file $ENV_FILE_PATH \
+              -p 127.0.0.1:$APP_PORT:$APP_PORT \
+              $IMAGE_NAME:latest
+
+            rm -f /tmp/$IMAGE_NAME.tar
+
+            sudo docker image prune -f
+          EOF
