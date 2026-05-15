@@ -79,4 +79,4 @@ jobs:
             rm -f /tmp/$IMAGE_NAME.tar
 
             sudo docker image prune -f
-          EOF
+          EOF 
